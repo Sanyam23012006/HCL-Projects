@@ -3,6 +3,40 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+function loadLocalEnvironment() {
+  const envPath = path.join(__dirname, '.env');
+
+  try {
+    const contents = fs.readFileSync(envPath, 'utf8');
+    for (const line of contents.split(/\r?\n/)) {
+      const entry = line.trim();
+      if (!entry || entry.startsWith('#')) continue;
+
+      const separator = entry.indexOf('=');
+      if (separator < 1) continue;
+
+      const key = entry.slice(0, separator).trim();
+      let value = entry.slice(separator + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+
+      if (key && process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw new Error(`Unable to read ${envPath}: ${error.message}`);
+    }
+  }
+}
+
+loadLocalEnvironment();
+
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DATA_DIR = path.join(__dirname, 'data');
@@ -409,7 +443,9 @@ const server = http.createServer(async (req, res) => {
       const username = process.env.ADMIN_USERNAME;
       const password = process.env.ADMIN_PASSWORD;
       if (!username || !password) {
-        sendJson(res, 503, { error: 'Admin login is not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD.' });
+        sendJson(res, 503, {
+          error: 'Admin account not set up. Copy .env.example to .env, choose a private ADMIN_PASSWORD, then restart the server.'
+        });
         return;
       }
       if (
