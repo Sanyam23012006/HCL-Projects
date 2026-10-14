@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin sign in | Film Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Film Finder</p>
+          <h1>Admin sign in</h1>
+        </div>
+        <nav class="hero-nav" aria-label="Main navigation">
+          <a href="/">Discover films</a>
+        </nav>
+      </header>
+
+      <main class="layout">
+        <section class="panel form-panel">
+          <h2>Welcome back</h2>
+          <p class="page-intro">Sign in with the admin credentials configured for this server.</p>
+          <form id="login-form">
+            <div class="field">
+              <label for="username">Username</label>
+              <input id="username" name="username" autocomplete="username" required />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" required />
+            </div>
+            <p id="login-message" class="form-message" role="status" aria-live="polite"></p>
+            <button type="submit">Sign in</button>
+          </form>
+        </section>
+      </main>
+    </div>
+    <script src="/login.js"></script>
+  </body>
+</html>
