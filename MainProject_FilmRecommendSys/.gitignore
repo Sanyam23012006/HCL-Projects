@@ -1,3 +1,5 @@
 /.env
 /data/movies.json
+/data/users.json
+/data/reviews.json
 /data/*.tmp

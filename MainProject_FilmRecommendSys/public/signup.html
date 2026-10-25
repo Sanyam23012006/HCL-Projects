@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create account | Film Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Film Finder</p>
+          <h1>Create account</h1>
+        </div>
+        <nav class="hero-nav" aria-label="Main navigation">
+          <a href="/">Discover films</a>
+          <a href="/user-login">User sign in</a>
+          <a href="/login">Admin sign in</a>
+        </nav>
+      </header>
+
+      <main class="layout">
+        <section class="panel form-panel">
+          <h2>Join Film Finder</h2>
+          <p class="page-intro">Create an account to get started.</p>
+          <form id="user-auth-form" data-mode="register">
+            <div class="field">
+              <label for="name">Name</label>
+              <input id="name" name="name" autocomplete="name" minlength="2" maxlength="60" required />
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required />
+              <span class="field-hint">Use at least 10 characters.</span>
+            </div>
+            <div class="field">
+              <label for="confirm-password">Confirm password</label>
+              <input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required />
+            </div>
+            <p id="auth-message" class="form-message" role="status" aria-live="polite"></p>
+            <button type="submit">Create account</button>
+          </form>
+          <p class="page-intro account-prompt">Already have an account? <a href="/user-login">Sign in</a>.</p>
+        </section>
+      </main>
+    </div>
+    <script src="/user-auth.js"></script>
+  </body>
+</html>

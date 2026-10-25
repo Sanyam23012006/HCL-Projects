@@ -21,7 +21,7 @@
 
       <main class="layout">
         <section class="panel form-panel">
-          <h2>Add a movie</h2>
+          <h2 id="movie-form-heading">Add a movie</h2>
           <p class="page-intro">New entries are saved locally and included in recommendations.</p>
           <form id="movie-form">
             <div class="form-grid">
@@ -54,12 +54,19 @@
                 <input id="director" name="director" maxlength="120" required />
               </div>
               <div class="field field-full">
+                <label for="posterUrl">Poster image URL (optional)</label>
+                <input id="posterUrl" name="posterUrl" type="url" maxlength="2048" placeholder="https://example.com/poster.jpg" />
+              </div>
+              <div class="field field-full">
                 <label for="description">Description</label>
                 <textarea id="description" name="description" maxlength="1000" rows="4" required></textarea>
               </div>
             </div>
             <p id="movie-message" class="form-message" role="status" aria-live="polite"></p>
-            <button type="submit">Save movie</button>
+            <div class="form-actions">
+              <button id="movie-submit-button" type="submit">Save movie</button>
+              <button id="cancel-edit-button" class="button-link" type="button" hidden>Cancel edit</button>
+            </div>
           </form>
         </section>
 

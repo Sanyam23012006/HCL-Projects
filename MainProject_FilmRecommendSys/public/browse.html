@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browse movies | Film Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Explore the library</p>
+          <h1>Browse movies</h1>
+        </div>
+        <nav class="hero-nav" aria-label="Main navigation">
+          <a href="/">Recommendations</a>
+          <a href="/watchlist">My watchlist</a>
+          <a id="browse-login-link" href="/user-login">User sign in</a>
+          <a id="browse-signup-link" href="/signup">Create account</a>
+          <span id="browse-user-welcome" class="user-welcome" hidden></span>
+          <a href="/login">Admin sign in</a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="panel catalog-panel">
+          <h2>Find a film</h2>
+          <form id="catalog-filter" class="catalog-filter">
+            <div class="field">
+              <label for="catalog-query">Search title, director, or description</label>
+              <input id="catalog-query" name="q" type="search" maxlength="120" placeholder="Try a movie or director" />
+            </div>
+            <div class="catalog-filter-grid">
+              <div class="field">
+                <label for="catalog-genre">Genre</label>
+                <select id="catalog-genre" name="genre"></select>
+              </div>
+              <div class="field">
+                <label for="catalog-rating">Minimum movie rating</label>
+                <input id="catalog-rating" name="minimumRating" type="number" min="0" max="10" step="0.1" />
+              </div>
+              <div class="field">
+                <label for="catalog-year-from">Release year from</label>
+                <input id="catalog-year-from" name="yearFrom" type="number" min="1888" max="2100" />
+              </div>
+              <div class="field">
+                <label for="catalog-year-to">Release year to</label>
+                <input id="catalog-year-to" name="yearTo" type="number" min="1888" max="2100" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit">Search catalog</button>
+              <button id="clear-catalog-filters" class="button-link" type="button">Clear filters</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel catalog-results">
+          <div class="results-header">
+            <h2>Movie catalog</h2>
+            <span id="catalog-count" class="status-badge">Loading...</span>
+          </div>
+          <div id="library-message" class="form-message" role="status" aria-live="polite"></div>
+          <div id="library-movies" class="catalog-grid"></div>
+        </section>
+      </main>
+    </div>
+    <script src="/library.js"></script>
+  </body>
+</html>
