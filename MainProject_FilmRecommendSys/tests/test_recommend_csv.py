@@ -1,9 +1,18 @@
 import csv
+import hashlib
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
-from recommend_csv import CSV_COLUMNS, get_catalog, get_options, recommend
+from recommend_csv import (
+    ADMIN_CATALOG_USER_ID,
+    CSV_COLUMNS,
+    get_catalog,
+    get_options,
+    mutate_dataset,
+    recommend,
+)
 
 
 class CsvRecommendationTests(unittest.TestCase):
@@ -83,6 +92,76 @@ class CsvRecommendationTests(unittest.TestCase):
     def test_catalog_rejects_invalid_year_range(self):
         with self.assertRaisesRegex(ValueError, "starting year"):
             get_catalog({"filters": {"yearFrom": "2023", "yearTo": "2020"}}, self.dataset_file)
+
+    def test_admin_can_add_update_and_delete_csv_movie(self):
+        added = mutate_dataset({
+            "action": "add",
+            "title": "Admin Added Film",
+            "genre": "Drama",
+            "language": "Hindi",
+            "release_year": 2024,
+            "rating": 4.5,
+        }, self.dataset_file)
+        self.assertEqual(added["title"], "Admin Added Film")
+
+        with self.dataset_file.open("r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        seed_row = next(row for row in rows if row["movie_title"] == "Admin Added Film")
+        self.assertEqual(int(seed_row["user_id"]), ADMIN_CATALOG_USER_ID)
+        self.assertEqual(float(seed_row["rating"]), 4.5)
+        self.assertRegex(seed_row["timestamp"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+        self.assert_sequential_timestamps(rows)
+
+        movie_id = "dataset-" + hashlib.sha256(b"Admin Added Film").hexdigest()[:16]
+        updated = mutate_dataset({
+            "action": "update",
+            "id": movie_id,
+            "title": "Updated Admin Film",
+            "genre": "Thriller",
+            "language": "Tamil",
+            "release_year": 2025,
+        }, self.dataset_file)
+        self.assertEqual(updated["title"], "Updated Admin Film")
+
+        with self.dataset_file.open("r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        updated_row = next(row for row in rows if row["movie_title"] == "Updated Admin Film")
+        self.assertEqual(updated_row["genre"], "Thriller")
+        self.assertEqual(updated_row["language"], "Tamil")
+        self.assertEqual(updated_row["release_year"], "2025")
+        self.assertEqual(updated_row["rating"], "4.5")
+        self.assert_sequential_timestamps(rows)
+
+        movie_id = "dataset-" + hashlib.sha256(b"Updated Admin Film").hexdigest()[:16]
+        deleted = mutate_dataset({"action": "delete", "id": movie_id}, self.dataset_file)
+        self.assertEqual(deleted["title"], "Updated Admin Film")
+        with self.dataset_file.open("r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertFalse(any(row["movie_title"] == "Updated Admin Film" for row in rows))
+        self.assert_sequential_timestamps(rows)
+
+    def test_admin_rejects_duplicate_title_without_modifying_csv(self):
+        original = self.dataset_file.read_bytes()
+        with self.assertRaisesRegex(FileExistsError, "already exists"):
+            mutate_dataset({
+                "action": "add",
+                "title": "Neighbor Pick",
+                "genre": "Action",
+                "language": "Hindi",
+                "release_year": 2022,
+                "rating": 4,
+            }, self.dataset_file)
+        self.assertEqual(self.dataset_file.read_bytes(), original)
+
+    def assert_sequential_timestamps(self, rows):
+        timestamps = [
+            datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
+            for row in rows
+        ]
+        self.assertTrue(all(
+            (later - earlier).total_seconds() == 1
+            for earlier, later in zip(timestamps, timestamps[1:])
+        ))
 
 
 if __name__ == "__main__":

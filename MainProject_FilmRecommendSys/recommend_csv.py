@@ -2,8 +2,11 @@ import csv
 import hashlib
 import json
 import math
+import os
 import sys
+import tempfile
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -18,6 +21,7 @@ CSV_COLUMNS = [
     "timestamp",
 ]
 LIKE_THRESHOLD = 3.5
+ADMIN_CATALOG_USER_ID = 999999999
 
 
 def load_dataset(dataset_file=DATASET_FILE):
@@ -135,6 +139,126 @@ def get_catalog(payload, dataset_file=DATASET_FILE):
     return {"movies": catalog, "genres": get_options(dataset_file)["genres"]}
 
 
+def mutate_dataset(payload, dataset_file=DATASET_FILE):
+    action = payload.get("action")
+    title = str(payload.get("title", "")).strip()
+    if action not in {"add", "update", "delete"}:
+        raise ValueError("Unsupported CSV catalog operation.")
+    if action != "add":
+        movie_id = payload.get("id")
+        if not isinstance(movie_id, str) or not movie_id.startswith("dataset-"):
+            raise ValueError("A valid CSV movie ID is required.")
+        _, current_movies = load_dataset(dataset_file)
+        current_title = next(
+            (
+                existing_title
+                for existing_title in current_movies
+                if "dataset-" + hashlib.sha256(existing_title.encode("utf-8")).hexdigest()[:16] == movie_id
+            ),
+            None,
+        )
+        if current_title is None:
+            raise FileNotFoundError("CSV movie not found.")
+        title = current_title
+
+    with dataset_file.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames != CSV_COLUMNS:
+            raise ValueError(f"Dataset must have these columns in order: {', '.join(CSV_COLUMNS)}")
+        rows = list(reader)
+
+    if action == "delete":
+        updated_rows = [row for row in rows if row["movie_title"].strip() != title]
+        if len(updated_rows) == len(rows):
+            raise FileNotFoundError("CSV movie not found.")
+        result = {"title": title}
+    else:
+        new_title = str(payload.get("title", title)).strip()
+        genre = str(payload.get("genre", "")).strip()
+        language = str(payload.get("language", "")).strip()
+        if not new_title or len(new_title) > 120:
+            raise ValueError("Movie title must be between 1 and 120 characters.")
+        if not genre or len(genre) > 60:
+            raise ValueError("Genre must be between 1 and 60 characters.")
+        if not language or len(language) > 40:
+            raise ValueError("Language must be between 1 and 40 characters.")
+        try:
+            release_year = int(payload.get("release_year"))
+        except (TypeError, ValueError) as error:
+            raise ValueError("Release year must be a whole number.") from error
+        if not 1888 <= release_year <= datetime.now().year + 5:
+            raise ValueError("Release year is outside the supported range.")
+
+        if any(
+            row["movie_title"].strip().casefold() == new_title.casefold()
+            and (action == "add" or row["movie_title"].strip() != title)
+            for row in rows
+        ):
+            raise FileExistsError("A movie with that title already exists.")
+
+        if action == "update":
+            updated_rows = []
+            for row in rows:
+                if row["movie_title"].strip() == title:
+                    row.update({
+                        "movie_title": new_title,
+                        "genre": genre,
+                        "language": language,
+                        "release_year": str(release_year),
+                    })
+                updated_rows.append(row)
+            result = {"title": new_title}
+        else:
+            try:
+                rating = float(payload.get("rating"))
+            except (TypeError, ValueError) as error:
+                raise ValueError("Initial rating must be a number from 1 to 5.") from error
+            if not 1 <= rating <= 5:
+                raise ValueError("Initial rating must be from 1 to 5.")
+            if any(int(row["user_id"]) == ADMIN_CATALOG_USER_ID for row in rows):
+                raise ValueError("Reserved catalog user ID already exists in the CSV.")
+            updated_rows = rows + [{
+                "user_id": str(ADMIN_CATALOG_USER_ID),
+                "movie_title": new_title,
+                "genre": genre,
+                "language": language,
+                "release_year": str(release_year),
+                "rating": f"{rating:.1f}",
+                "timestamp": "",
+            }]
+            result = {"title": new_title}
+
+    dataset_file.parent.mkdir(parents=True, exist_ok=True)
+    start_timestamp = datetime(2024, 1, 1)
+    for index, row in enumerate(updated_rows):
+        row["timestamp"] = (start_timestamp + timedelta(seconds=index)).strftime("%Y-%m-%d %H:%M:%S")
+
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=dataset_file.parent,
+            prefix=f"{dataset_file.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
+            writer.writeheader()
+            writer.writerows(updated_rows)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, dataset_file)
+    except OSError:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
+        raise
+    result["id"] = "dataset-" + hashlib.sha256(result["title"].encode("utf-8")).hexdigest()[:16]
+    return result
+
+
 def recommend(payload, dataset_file=DATASET_FILE):
     ratings_by_user, movies = load_dataset(dataset_file)
     try:
@@ -246,6 +370,7 @@ def recommend(payload, dataset_file=DATASET_FILE):
 
 
 if __name__ == "__main__":
+    request = None
     try:
         request = json.load(sys.stdin)
         if not isinstance(request, dict):
@@ -254,9 +379,22 @@ if __name__ == "__main__":
             response = get_options()
         elif request.get("action") == "catalog":
             response = get_catalog(request)
+        elif request.get("action") in {"add", "update", "delete"}:
+            response = mutate_dataset(request)
         else:
             response = recommend(request)
         json.dump(response, sys.stdout)
     except Exception as error:
+        if isinstance(request, dict) and request.get("action") in {"add", "update", "delete"}:
+            if isinstance(error, FileExistsError):
+                status_code = 409
+            elif isinstance(error, FileNotFoundError):
+                status_code = 404
+            elif isinstance(error, ValueError):
+                status_code = 400
+            else:
+                status_code = 503
+            json.dump({"error": str(error), "statusCode": status_code}, sys.stdout)
+            sys.exit(0)
         print(f"CSV recommender error: {error}", file=sys.stderr)
         sys.exit(1)

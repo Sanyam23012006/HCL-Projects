@@ -54,6 +54,7 @@ const PASSWORD_HASH_BYTES = 64;
 const scrypt = promisify(crypto.scrypt);
 const sessions = new Map();
 const userSessions = new Map();
+let datasetMutationQueue = Promise.resolve();
 
 const initialMovies = [
   {
@@ -921,6 +922,12 @@ function runCsvRecommender(payload) {
   });
 }
 
+function mutateCsvDataset(payload) {
+  const mutation = datasetMutationQueue.then(() => runCsvRecommender(payload));
+  datasetMutationQueue = mutation.catch(() => {});
+  return mutation;
+}
+
 const server = http.createServer(async (req, res) => {
   let url;
   try {
@@ -1007,6 +1014,68 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       console.error('Unable to load CSV movie catalog:', error);
       sendJson(res, error.statusCode || 400, { error: error.message || 'Unable to load the CSV movie catalog.' });
+    }
+    return;
+  }
+  const datasetMovieRoute = url.pathname.match(/^\/api\/admin\/dataset-movies(?:\/(dataset-[a-f0-9]{16}))?$/);
+  if (datasetMovieRoute && ['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    if (!hasAdminSession(req)) {
+      sendJson(res, 401, { error: 'Admin sign-in required.' });
+      return;
+    }
+    if ((req.method === 'POST' && datasetMovieRoute[1]) ||
+        (req.method !== 'POST' && !datasetMovieRoute[1])) {
+      sendJson(res, 404, { error: 'CSV movie not found.' });
+      return;
+    }
+    try {
+      const payload = req.method === 'DELETE' ? {} : await readJsonBody(req);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        sendJson(res, 400, { error: 'Movie data must be a JSON object.' });
+        return;
+      }
+      const action = req.method === 'POST' ? 'add' : req.method === 'PUT' ? 'update' : 'delete';
+      if (action !== 'delete') {
+        const title = normalizeString(payload.title, 120);
+        const genre = normalizeString(payload.genre, 60);
+        const language = normalizeString(payload.language, 40);
+        const releaseYear = Number(payload.releaseYear);
+        if (!title || !genre || !language) {
+          sendJson(res, 400, { error: 'Enter a title, genre, and language.' });
+          return;
+        }
+        if (!Number.isInteger(releaseYear) || releaseYear < 1888 || releaseYear > new Date().getFullYear() + 5) {
+          sendJson(res, 400, { error: 'Release year is outside the supported range.' });
+          return;
+        }
+        payload.title = title;
+        payload.genre = genre;
+        payload.language = language;
+        payload.release_year = releaseYear;
+      }
+      if (action === 'add') {
+        const rating = Number(payload.rating);
+        if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+          sendJson(res, 400, { error: 'Initial rating must be from 1 to 5.' });
+          return;
+        }
+        payload.rating = rating;
+      }
+      const result = await mutateCsvDataset({
+        ...payload,
+        action,
+        id: datasetMovieRoute[1]
+      });
+      if (typeof result.error === 'string') {
+        sendJson(res, Number.isInteger(result.statusCode) ? result.statusCode : 503, { error: result.error });
+        return;
+      }
+      sendJson(res, action === 'add' ? 201 : 200, { movie: result });
+    } catch (error) {
+      if (error.statusCode === 503) {
+        console.error('Unable to update CSV movie dataset:', error);
+      }
+      sendJson(res, error.statusCode || 503, { error: error.message || 'Unable to update the CSV movie dataset.' });
     }
     return;
   }
