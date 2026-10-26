@@ -15,7 +15,7 @@
   <artifactId>film-recommendation-system</artifactId>
   <version>1.0.0</version>
   <name>Film Recommendation System</name>
-  <description>Spring Boot and MySQL film recommendation application with a Python ML service</description>
+  <description>Spring Boot film recommendation application with a local H2 database and Python ML service</description>
 
   <properties>
     <java.version>17</java.version>
@@ -43,7 +43,7 @@
     <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
-      <scope>test</scope>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
