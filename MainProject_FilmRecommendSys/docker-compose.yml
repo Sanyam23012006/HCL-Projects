@@ -1,0 +1,14 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: film_recommendations
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD before starting MySQL}
+    ports:
+      - "3306:3306"
+    volumes:
+      - film-mysql-data:/var/lib/mysql
+
+volumes:
+  film-mysql-data:

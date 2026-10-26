@@ -1,99 +1,123 @@
 # Film Recommendation System
 
-A simple movie recommendation app built with Node.js and vanilla JavaScript.
+The active application is a Spring Boot REST backend backed by MySQL, the existing browser interface served by Spring, and a separate Python FastAPI recommendation service. The Node.js server and older Python recommenders remain in the repository as legacy code; they are not used by this startup path.
 
 ## Features
 
-- CSV-backed collaborative recommendations filtered by genre, language, and minimum rating
-- Recent-film preference toggle
-- Admins can add, edit, and delete movies in the CSV dataset
-- Visitors can create accounts and sign in with an email and password
-- User passwords are stored as salted scrypt hashes, not plain text
-- Users can save favorite genres, moods, and minimum ratings in their account preferences
-- Each recommendation explains the collaborative and popularity signals behind its score
-- Synthetic dataset profiles provide overlapping preferences for demonstrating collaborative filtering
-- Signed-in users can rate movies and write one review per movie; community averages are displayed
-- Search the CSV movie dataset by title, genre, rating, or release year
-- Signed-in users can save movies to a private persistent watchlist
-- Clean browser UI with no external dependencies
+- Spring Boot REST APIs for login, registration, app catalog, reviews, watchlists, preferences, and admin movie management
+- MySQL persistence through Spring Data JPA
+- First-run import of the existing JSON app catalog/accounts/reviews and CSV ratings dataset
+- Admin add, edit, and delete for CSV-seeded dataset movies; after import, MySQL is the source of truth
+- Python FastAPI/scikit-learn user-based collaborative filtering endpoint
+- Optional TensorFlow matrix-factorization training script
+- Existing browser UI served from `public`
 
-## Run locally
+## Prerequisites
 
-1. Open a terminal in this folder.
-2. Copy `.env.example` to `.env`, then set your own private admin password in `.env`. In PowerShell:
+- Java 17+
+- Maven 3.9+ (only needed to build the application or run Java tests)
+- Python 3.10+
+- Docker Desktop or an existing MySQL 8 server
 
-```powershell
-Copy-Item .env.example .env
-```
+## Run locally on Windows
 
-Edit `.env` so it contains:
+### 1. Configure and start MySQL
 
-```env
-ADMIN_USERNAME=Sanyam
-ADMIN_PASSWORD=choose-a-private-password
-```
-
-The `.env` file is local and ignored by Git. Do not commit or share it.
-
-3. Create a Python virtual environment and install the project dependencies. `recommend_csv.py` uses Python's standard library; scikit-learn is retained for the inactive TF-IDF recommender and its tests:
+If you do not already have MySQL running, set a private database root password and start the provided container:
 
 ```powershell
+$env:MYSQL_PASSWORD = "choose-a-private-mysql-password"
+docker compose up -d mysql
+```
+
+The compose file creates the `film_recommendations` database and persists data in a Docker volume. To use an existing MySQL server instead, ensure it is running, create the `film_recommendations` database, and set `MYSQL_URL`, `MYSQL_USER`, and `MYSQL_PASSWORD` to match its connection settings.
+
+### 2. Configure the Spring application
+
+Create `.env` from `.env.example` if needed, then edit it with your MySQL connection and private admin credentials. Spring Boot does not automatically load `.env`; load it into the current PowerShell process before launching the app:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+Get-Content .env | ForEach-Object {
+    if ($_ -match '^\s*([^#][^=]*)=(.*)$') {
+        [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process')
+    }
+}
+```
+
+The variables remain available in this PowerShell window. Docker Compose also reads `.env` for its MySQL password. Never commit real credentials.
+
+On first startup, Spring imports `data/collaborative_dataset.csv` and any available legacy JSON files into empty SQL tables. Imported data is not overwritten on later starts. Once imported, admin changes are stored in MySQL; the CSV remains the initial seed, not the live editable store. The existing JSON files are left untouched.
+
+### 3. Start the Python recommendation service
+
+In a second PowerShell window:
+
+```powershell
+Set-Location "C:\Projects\HCL-Projects\MainProject_FilmRecommendSys"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+uvicorn ml_service:app --host 127.0.0.1 --port 8000
 ```
 
-4. Generate the recommendation dataset from the provided source CSV:
+The Spring backend calls `POST /api/recommend` on this service. Recommendations will return an explicit service error if the Python API is unavailable.
+
+### 4. Start Spring Boot
+
+In a PowerShell window with the database and admin environment variables loaded, either start with Maven:
 
 ```powershell
-python generate_dataset.py --source "C:\Users\NITRO\Downloads\dataset.csv"
+mvn spring-boot:run
 ```
 
-This writes `data/collaborative_dataset.csv` with 5,000 rows and exactly the required seven columns. The 500 supplied rows are retained, then synthetic users and film ratings are added to reach 100 titles. Synthetic user IDs start at 10000, separate from the supplied IDs. Timestamps are rewritten as a strictly sequential `YYYY-MM-DD HH:MM:SS` series. The source file supplied for this project contains 500 rows and eight titles; it is not a raw MovieLens 100K download.
+Or run the packaged application if the JAR is present:
 
-5. Start the server:
-
-```bash
-node start.js
+```powershell
+java -jar target/film-recommendation-system-1.0.0.jar
 ```
 
-6. Open http://localhost:3000 in your browser. Sign in at http://localhost:3000/login.
+Open <http://localhost:3000>. The browser client is served by Spring Boot. Check the backend at <http://localhost:3000/api/health>.
 
-The live recommendation endpoint runs `recommend_csv.py` using the Python executable named by `PYTHON_EXECUTABLE` (default: `python` on Windows, `python3` elsewhere). If the generated CSV is missing, the endpoint reports an error; run the generator before starting recommendations.
+## Tests and optional TensorFlow training
 
-## Machine-learning approach
+Run Java integration tests:
 
-The active recommender reads user/movie/rating rows directly from `data/collaborative_dataset.csv`. It compares users' sets of liked movies (ratings of 3.5/5 or higher) using Jaccard similarity, then ranks unseen films that similar users liked. Average rating and rating count provide a fallback popularity score for cold-start cases. Genre, language, minimum-rating, and recent-release filters are applied to the CSV fields.
+```powershell
+mvn test
+```
 
-For this demo, each signed-in app account is consistently mapped to one synthetic CSV profile. App account IDs and app review records are not inserted into the CSV ratings model. The displayed dataset titles are not app-catalog movies, so the homepage recommendations do not offer app watchlist/review actions. The Browse and Admin pages both read distinct titles and aggregated ratings from the CSV. The Admin page can add, edit, and delete CSV movie rows: adding a movie asks for its first rating and stores it under reserved user ID `999999999`; editing changes title/genre/language/year across all rating rows but preserves each rating; deleting removes every CSV row for that title. The Watchlist page and its review features continue to use the separate app JSON catalog. The old TF-IDF implementation remains in `recommend.py` but is not called by the live recommendation endpoint.
+Run Python tests:
 
-Visitors can create an account at http://localhost:3000/signup or sign in at http://localhost:3000/user-login. Signed-in users can save preferences at http://localhost:3000/preferences. Genre and minimum-rating preferences pre-fill the matching homepage filters. Mood preferences remain stored with the account but are not used by the CSV recommender because mood is not a dataset column. User accounts and preferences are saved in `data/users.json`, which is ignored by Git.
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+```
 
-Signed-in users can rate catalog movies from 1 to 10 and post one written review per movie. They can edit their own review; catalog cards show the community average and latest reviews. Reviews are saved in `data/reviews.json`, which is ignored by Git.
+The optional TensorFlow trainer is not needed to run recommendations. Install its separate dependencies and invoke it only when training that experimental model:
 
-Browse CSV movie titles at http://localhost:3000/browse. The admin page at http://localhost:3000/admin manages these CSV records. Running `generate_dataset.py` again rebuilds the generated dataset from the source CSV and overwrites Admin changes, so run it for initial setup or when intentionally resetting the dataset. The JSON movie catalog, accounts, and reviews are preserved; the separate Watchlist page continues to display the app's existing JSON movie records.
+```powershell
+python -m pip install -r requirements-tensorflow.txt
+python train_tensorflow_model.py
+```
 
-If you change `.env` while the server is already running, stop it with Ctrl+C and run `node start.js` again to reload the credentials.
+The live recommendation API uses scikit-learn cosine similarity; TensorFlow is an optional training component, not part of the request-time path.
+
+## Data and ML behavior
+
+- `data/collaborative_dataset.csv` is imported into SQL on initial database setup. Its columns are `user_id,movie_title,genre,language,release_year,rating,timestamp`.
+- The Python service receives rating rows from Spring and computes item suggestions from similar user profiles, with cold-start/popularity fallbacks.
+- Each signed-in account is mapped to a dataset user profile. App-catalog reviews/watchlists remain separate from the collaborative rating dataset.
+- `data/movies.json`, `data/users.json`, and `data/reviews.json` are import sources for legacy app data. They are not modified or deleted by the migration.
 
 ## Project structure
 
-- `start.js` – HTTP server and CSV recommender integration
-- `recommend_csv.py` – active Python collaborative recommender for the CSV dataset
-- `generate_dataset.py` – creates the 5,000-row dataset from the supplied CSV plus synthetic ratings
-- `recommend.py` – retained, inactive TF-IDF recommender
-- `requirements.txt` – Python ML dependencies
-- `public/index.html` – page structure
-- `public/styles.css` – styling
-- `public/app.js` – client-side interactions
-- `public/login.html` and `public/login.js` – admin sign-in
-- `public/admin.html` and `public/admin.js` – protected CSV movie management
-- `public/signup.html`, `public/user-login.html`, and `public/user-auth.js` – user registration and sign-in
-- `public/preferences.html` and `public/preferences.js` – saved recommendation preferences
-- `data/reviews.json` – persistent movie ratings and reviews
-- `data/collaborative_dataset.csv` – generated recommendation ratings source
-- `data/movies.json` – persistent movie catalog created on first launch
-- `data/users.json` – persistent user accounts with salted password hashes
-
-## Notes
-
-Existing JSON files remain intact but do not supply the Browse or Admin movie lists. User accounts persist in `data/users.json`. Admin and user sessions use separate HTTP-only cookies and expire after eight hours.
+- `src/main/java/com/filmfinder/api` — Spring REST and page routes
+- `src/main/java/com/filmfinder/service` — persistence, authentication, import, and ML-service integration
+- `src/main/java/com/filmfinder/model` and `repository` — JPA entities and repositories
+- `src/main/resources/application.properties` — MySQL and service configuration
+- `src/test` — H2-backed Spring integration tests
+- `ml_service.py` — active FastAPI/scikit-learn recommender API
+- `train_tensorflow_model.py` — optional TensorFlow matrix-factorization trainer
+- `public` — existing browser UI
+- `data/collaborative_dataset.csv` — initial collaborative-rating data for SQL import
+- `start.js`, `recommend.py`, and `recommend_csv.py` — retained legacy Node/Python implementations

@@ -1,6 +1,11 @@
 /.env
+.env
+.mvn/wrapper/maven-wrapper.jar
+target/
 __pycache__/
 /.venv/
+/models/
+*.keras
 /data/movies.json
 /data/users.json
 /data/reviews.json
