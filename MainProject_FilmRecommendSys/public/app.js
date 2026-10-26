@@ -104,7 +104,7 @@ function renderRecommendations(items) {
         ? `<p class="review-count-note">Showing the latest ${reviews.length} of ${movie.reviewCount} reviews.</p>`
         : '';
       const cardActions = movie.datasetOnly
-        ? `<p class="field-hint">CSV dataset recommendation · ${escapeHtml(movie.datasetRatingCount)} dataset ratings · ${escapeHtml(movie.language)}</p>`
+        ? `<p class="field-hint"> · ${escapeHtml(movie.datasetRatingCount)} ratings · ${escapeHtml(movie.language)}</p>`
         : `<div class="movie-card-actions">${watchlistButton}</div>
           ${reasons ? `<div class="match-explanation"><h4>Why this was recommended</h4><ul>${reasons}</ul></div>` : ''}
           <section class="movie-reviews" aria-label="Reviews for ${escapeHtml(movie.title)}">
