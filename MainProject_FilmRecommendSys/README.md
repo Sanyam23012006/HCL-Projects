@@ -4,16 +4,15 @@ A simple movie recommendation app built with Node.js and vanilla JavaScript.
 
 ## Features
 
-- Personalized film recommendations based on genre and mood
-- Adjustable minimum rating and maximum runtime
+- CSV-backed collaborative recommendations filtered by genre, language, and minimum rating
 - Recent-film preference toggle
 - Admins can add, edit, and delete movies
 - Movie changes are saved in the local JSON catalog
 - Visitors can create accounts and sign in with an email and password
 - User passwords are stored as salted scrypt hashes, not plain text
-- Users can save favorite genres, moods, and minimum ratings for personalized recommendations
-- Each recommendation explains which preferences and ranking factors contributed to its score
-- Python content-based recommendations use TF-IDF and cosine similarity over movie details
+- Users can save favorite genres, moods, and minimum ratings in their account preferences
+- Each recommendation explains the collaborative and popularity signals behind its score
+- Synthetic dataset profiles provide overlapping preferences for demonstrating collaborative filtering
 - Signed-in users can rate movies and write one review per movie; community averages are displayed
 - Search the movie catalog by title, director, description, genre, rating, or release year
 - Signed-in users can save movies to a private persistent watchlist
@@ -38,7 +37,7 @@ ADMIN_PASSWORD=choose-a-private-password
 
 The `.env` file is local and ignored by Git. Do not commit or share it.
 
-3. Create a Python virtual environment and install the ML dependency:
+3. Create a Python virtual environment and install the project dependencies. `recommend_csv.py` uses Python's standard library; scikit-learn is retained for the inactive TF-IDF recommender and its tests:
 
 ```powershell
 python -m venv .venv
@@ -46,23 +45,33 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-4. Start the server:
+4. Generate the recommendation dataset from the provided source CSV:
+
+```powershell
+python generate_dataset.py --source "C:\Users\NITRO\Downloads\dataset.csv"
+```
+
+This writes `data/collaborative_dataset.csv` with 5,000 rows and exactly the required seven columns. The 500 supplied rows are retained, then synthetic users and film ratings are added to reach 100 titles. Synthetic user IDs start at 10000, separate from the supplied IDs. Timestamps are rewritten as a strictly sequential `YYYY-MM-DD HH:MM:SS` series. The source file supplied for this project contains 500 rows and eight titles; it is not a raw MovieLens 100K download.
+
+5. Start the server:
 
 ```bash
 node start.js
 ```
 
-5. Open http://localhost:3000 in your browser. Sign in at http://localhost:3000/login.
+6. Open http://localhost:3000 in your browser. Sign in at http://localhost:3000/login.
 
-The recommendation endpoint runs `recommend.py` using the Python executable named by `PYTHON_EXECUTABLE` (default: `python` on Windows, `python3` elsewhere). Activate the virtual environment before starting Node.js so it can find scikit-learn. If you do not activate it, set `PYTHON_EXECUTABLE` in `.env` to the full path of the environment's Python executable.
+The live recommendation endpoint runs `recommend_csv.py` using the Python executable named by `PYTHON_EXECUTABLE` (default: `python` on Windows, `python3` elsewhere). If the generated CSV is missing, the endpoint reports an error; run the generator before starting recommendations.
 
 ## Machine-learning approach
 
-The recommender uses content-based filtering. Scikit-learn's `TfidfVectorizer` converts each movie's genres, mood, director, and description into a numeric feature vector. Cosine similarity compares those vectors with a profile built from selected genres and moods, saved watchlist movies, and positively rated movies. Movies above the user's rating threshold and within the runtime limit are ranked by similarity, with rating and recency as secondary signals. This approach can recommend new movies without requiring a large training dataset.
+The active recommender reads user/movie/rating rows directly from `data/collaborative_dataset.csv`. It compares users' sets of liked movies (ratings of 3.5/5 or higher) using Jaccard similarity, then ranks unseen films that similar users liked. Average rating and rating count provide a fallback popularity score for cold-start cases. Genre, language, minimum-rating, and recent-release filters are applied to the CSV fields.
 
-Visitors can create an account at http://localhost:3000/signup or sign in at http://localhost:3000/user-login. Signed-in users can save favorite genres, moods, and a minimum rating at http://localhost:3000/preferences. Saved preferences pre-fill the home-page filters on the next visit and are used to rank recommendations. User accounts and preferences are saved in `data/users.json`, which is ignored by Git.
+For this demo, each signed-in app account is consistently mapped to one synthetic CSV profile. App account IDs and app review records are not inserted into the CSV ratings model. The displayed dataset titles are not app-catalog movies, so the homepage recommendations do not offer app watchlist/review actions; the catalog's existing review and watchlist features remain available on Browse and Watchlist. The old TF-IDF implementation remains in `recommend.py` but is not called by the live recommendation endpoint.
 
-Signed-in users can rate each recommended movie from 1 to 10 and post one written review per movie. They can edit their own review; movie cards show the community average and latest reviews. Reviews are saved in `data/reviews.json`, which is ignored by Git.
+Visitors can create an account at http://localhost:3000/signup or sign in at http://localhost:3000/user-login. Signed-in users can save preferences at http://localhost:3000/preferences. Genre and minimum-rating preferences pre-fill the matching homepage filters. Mood preferences remain stored with the account but are not used by the CSV recommender because mood is not a dataset column. User accounts and preferences are saved in `data/users.json`, which is ignored by Git.
+
+Signed-in users can rate catalog movies from 1 to 10 and post one written review per movie. They can edit their own review; catalog cards show the community average and latest reviews. Reviews are saved in `data/reviews.json`, which is ignored by Git.
 
 Browse the full catalog at http://localhost:3000/browse. Signed-in users can add movies to their private watchlist and review it at http://localhost:3000/watchlist. Admins can optionally add an HTTP or HTTPS poster image URL when creating or editing a movie.
 
@@ -70,8 +79,10 @@ If you change `.env` while the server is already running, stop it with Ctrl+C an
 
 ## Project structure
 
-- `start.js` – HTTP server and recommendation logic
-- `recommend.py` – Python TF-IDF and cosine-similarity recommendation engine
+- `start.js` – HTTP server and CSV recommender integration
+- `recommend_csv.py` – active Python collaborative recommender for the CSV dataset
+- `generate_dataset.py` – creates the 5,000-row dataset from the supplied CSV plus synthetic ratings
+- `recommend.py` – retained, inactive TF-IDF recommender
 - `requirements.txt` – Python ML dependencies
 - `public/index.html` – page structure
 - `public/styles.css` – styling
@@ -81,6 +92,7 @@ If you change `.env` while the server is already running, stop it with Ctrl+C an
 - `public/signup.html`, `public/user-login.html`, and `public/user-auth.js` – user registration and sign-in
 - `public/preferences.html` and `public/preferences.js` – saved recommendation preferences
 - `data/reviews.json` – persistent movie ratings and reviews
+- `data/collaborative_dataset.csv` – generated recommendation ratings source
 - `data/movies.json` – persistent movie catalog created on first launch
 - `data/users.json` – persistent user accounts with salted password hashes
 

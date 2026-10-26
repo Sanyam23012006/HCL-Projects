@@ -41,7 +41,7 @@ loadLocalEnvironment();
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const RECOMMENDER_FILE = path.join(__dirname, 'recommend.py');
+const RECOMMENDER_FILE = path.join(__dirname, 'recommend_csv.py');
 const DATA_DIR = path.join(__dirname, 'data');
 const MOVIES_FILE = path.join(DATA_DIR, 'movies.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -862,7 +862,7 @@ function getPythonExecutable() {
   return process.env.PYTHON_EXECUTABLE || (process.platform === 'win32' ? 'python' : 'python3');
 }
 
-function getMlRecommendations(payload) {
+function runCsvRecommender(payload) {
   return new Promise((resolve, reject) => {
     const python = spawn(getPythonExecutable(), [RECOMMENDER_FILE], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
@@ -896,17 +896,17 @@ function getMlRecommendations(payload) {
         reject(Object.assign(
           new Error(detail
             ? `The Python recommender failed: ${detail}`
-            : 'The Python recommender failed. Check that its dependencies are installed.'),
+            : 'The Python recommender failed. Check that Python is installed and the CSV dataset is generated.'),
           { statusCode: 503 }
         ));
         return;
       }
       try {
         const result = JSON.parse(stdout);
-        if (!Array.isArray(result.recommendations)) {
+        if (!result || typeof result !== 'object' || Array.isArray(result)) {
           throw new Error('The Python recommender returned an invalid response.');
         }
-        resolve(result.recommendations);
+        resolve(result);
       } catch (error) {
         reject(Object.assign(new Error(`Unable to read the Python recommender response: ${error.message}`), { statusCode: 503 }));
       }
@@ -973,6 +973,19 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/movies') {
     sendJson(res, 200, { movies, ...getOptions() });
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/api/recommendation-options') {
+    try {
+      const result = await runCsvRecommender({ action: 'options' });
+      if (!Array.isArray(result.genres) || !Array.isArray(result.languages)) {
+        throw Object.assign(new Error('The CSV recommender returned invalid filter options.'), { statusCode: 503 });
+      }
+      sendJson(res, 200, { genres: result.genres, languages: result.languages });
+    } catch (error) {
+      console.error('Unable to load collaborative dataset filters:', error);
+      sendJson(res, error.statusCode || 503, { error: error.message || 'Unable to load recommendation filters.' });
+    }
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/catalog') {
@@ -1177,31 +1190,22 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const user = getUserFromSession(req);
-      const mlRecommendations = await getMlRecommendations({
-        movies,
-        preferences: payload,
-        watchlist: user?.watchlist || [],
-        ratings: user
-          ? reviews
-            .filter((review) => review.userId === user.id)
-            .map((review) => ({ movieId: review.movieId, rating: review.rating }))
-          : []
+      const datasetUserId = user
+        ? 10000 + crypto.createHash('sha256').update(user.id).digest().readUInt32BE(0) % 300
+        : 10000;
+      const result = await runCsvRecommender({
+        datasetUserId,
+        preferences: {
+          favoriteGenres: Array.isArray(payload.favoriteGenres) ? payload.favoriteGenres : [],
+          languages: Array.isArray(payload.languages) ? payload.languages : [],
+          minimumRating: payload.minimumRating,
+          includeLatest: payload.includeLatest
+        }
       });
-      const movieById = new Map(movies.map((movie) => [movie.id, movie]));
-      const recommendations = mlRecommendations
-        .map((recommendation) => {
-          const movie = movieById.get(recommendation.id);
-          if (!movie) return null;
-          return {
-            ...movie,
-            score: recommendation.score,
-            reasons: recommendation.reasons,
-            ...getMovieReviewData(movie.id, user?.id),
-            inWatchlist: Boolean(user && user.watchlist?.includes(movie.id))
-          };
-        })
-        .filter(Boolean);
-      sendJson(res, 200, { recommendations });
+      if (!Array.isArray(result.recommendations)) {
+        throw Object.assign(new Error('The CSV recommender returned an invalid recommendation list.'), { statusCode: 503 });
+      }
+      sendJson(res, 200, { recommendations: result.recommendations });
     } catch (error) {
       if (error.statusCode === 503) {
         console.error('Unable to generate ML recommendations:', error);

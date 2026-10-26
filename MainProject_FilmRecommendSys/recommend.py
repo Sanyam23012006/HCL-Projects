@@ -21,6 +21,68 @@ def _movie_text(movie):
     return " ".join(str(value) for value in fields if value)
 
 
+def _collaborative_scores(payload, current_ratings, watchlist):
+    current_user_id = payload.get("currentUserId")
+    if not isinstance(current_user_id, str):
+        return {}
+
+    user_ratings = {}
+    for entry in _as_list(payload.get("collaborativeRatings")):
+        if not isinstance(entry, dict):
+            continue
+        user_id = entry.get("userId")
+        movie_id = entry.get("movieId")
+        rating = entry.get("rating")
+        if (
+            isinstance(user_id, str)
+            and isinstance(movie_id, str)
+            and isinstance(rating, (int, float))
+            and 1 <= rating <= 10
+        ):
+            user_ratings.setdefault(user_id, {})[movie_id] = rating
+
+    current_likes = {
+        movie_id
+        for movie_id, rating in current_ratings.items()
+        if rating >= 7
+    }
+    if not current_likes:
+        return {}
+
+    weighted_totals = {}
+    similarity_totals = {}
+    for user_id, ratings in user_ratings.items():
+        if user_id == current_user_id:
+            continue
+        neighbor_likes = {
+            movie_id
+            for movie_id, rating in ratings.items()
+            if rating >= 7
+        }
+        union = current_likes | neighbor_likes
+        if not union:
+            continue
+        similarity = len(current_likes & neighbor_likes) / len(union)
+        if similarity == 0:
+            continue
+
+        for movie_id, rating in ratings.items():
+            if (
+                rating < 7
+                or movie_id in current_ratings
+                or movie_id in watchlist
+            ):
+                continue
+            weighted_totals[movie_id] = weighted_totals.get(movie_id, 0) + similarity * (rating / 10)
+            similarity_totals[movie_id] = similarity_totals.get(movie_id, 0) + similarity
+
+    return {
+        movie_id: weighted_totals[movie_id] / similarity
+        for movie_id, similarity in similarity_totals.items()
+        if similarity > 0
+    }
+
+
 def recommend(payload):
     movies = payload.get("movies", [])
     if not movies:
@@ -61,6 +123,21 @@ def recommend(payload):
         for index, movie in enumerate(movies)
         if isinstance(movie.get("id"), str)
     }
+    current_ratings = {
+        rating["movieId"]: rating["rating"]
+        for rating in _as_list(payload.get("ratings"))
+        if (
+            isinstance(rating, dict)
+            and isinstance(rating.get("movieId"), str)
+            and isinstance(rating.get("rating"), (int, float))
+        )
+    }
+    watchlist = {
+        movie_id
+        for movie_id in _as_list(payload.get("watchlist"))
+        if isinstance(movie_id, str)
+    }
+    collaborative_scores = _collaborative_scores(payload, current_ratings, watchlist)
 
     watchlist_count = 0
     for movie_id in _as_list(payload.get("watchlist")):
@@ -70,12 +147,10 @@ def recommend(payload):
             watchlist_count += 1
 
     positive_rating_count = 0
-    for rating in _as_list(payload.get("ratings")):
-        if not isinstance(rating, dict) or not isinstance(rating.get("rating"), (int, float)):
-            continue
-        index = movie_indexes.get(rating.get("movieId"))
-        if index is not None and rating["rating"] >= 6:
-            profile_vector = profile_vector + movie_vectors[index] * (rating["rating"] / 10)
+    for movie_id, rating in current_ratings.items():
+        index = movie_indexes.get(movie_id)
+        if index is not None and rating >= 6:
+            profile_vector = profile_vector + movie_vectors[index] * (rating / 10)
             positive_rating_count += 1
 
     profile_vector = normalize(profile_vector)
@@ -99,6 +174,9 @@ def recommend(payload):
     minimum_recent_year = 2015 + include_latest
     ranked = []
     for index, movie in enumerate(movies):
+        movie_id = movie.get("id")
+        if movie_id in current_ratings or movie_id in watchlist:
+            continue
         try:
             rating = float(movie.get("rating", 0))
             runtime = float(movie.get("runtime", 0))
@@ -121,8 +199,9 @@ def recommend(payload):
             continue
 
         similarity = float(similarities[index])
+        collaborative_score = collaborative_scores.get(movie_id, 0)
         recent_bonus = 0.2 if year >= minimum_recent_year else 0
-        score = similarity * 10 + rating / 10 + recent_bonus
+        score = similarity * 10 + rating / 10 + recent_bonus + collaborative_score * 4
         reasons = []
         if similarity > 0:
             reasons.append(
@@ -134,10 +213,15 @@ def recommend(payload):
             reasons.append("Your selected genres and moods are included in the content profile.")
         if has_history:
             reasons.append("Your watchlist and positively rated movies are included in the content profile.")
+        if collaborative_score > 0:
+            reasons.append(
+                "Users with similar movie ratings liked this movie "
+                f"(collaborative score: {collaborative_score * 10:.1f}/10)."
+            )
         if year >= minimum_recent_year:
             reasons.append(f"Recent release ({year}; {minimum_recent_year} or newer).")
         ranked.append({
-            "id": movie.get("id"),
+            "id": movie_id,
             "score": round(score, 2),
             "similarity": round(similarity, 4),
             "reasons": reasons,

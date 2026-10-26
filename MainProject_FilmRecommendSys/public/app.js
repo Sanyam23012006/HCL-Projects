@@ -1,8 +1,7 @@
 const form = document.getElementById('preference-form');
 const genreSelect = document.getElementById('favoriteGenre');
-const moodSelect = document.getElementById('mood');
+const languageSelect = document.getElementById('language');
 const minimumRatingInput = document.getElementById('minimumRating');
-const maxRuntimeInput = document.getElementById('maxRuntime');
 const includeLatestInput = document.getElementById('includeLatest');
 const recommendationsContainer = document.getElementById('recommendations');
 const statusBadge = document.getElementById('statusBadge');
@@ -15,11 +14,12 @@ const userLogoutButton = document.getElementById('user-logout-button');
 let currentRecommendations = [];
 
 async function loadOptions() {
-  const response = await fetch('/api/movies');
+  const response = await fetch('/api/recommendation-options');
+  if (!response.ok) throw new Error('Unable to load collaborative dataset filters.');
   const result = await response.json();
 
   populateSelect(genreSelect, result.genres);
-  populateSelect(moodSelect, result.moods);
+  populateSelect(languageSelect, result.languages);
 }
 
 function populateSelect(selectElement, values) {
@@ -103,6 +103,16 @@ function renderRecommendations(items) {
       const reviewCountLabel = movie.reviewCount > reviews.length
         ? `<p class="review-count-note">Showing the latest ${reviews.length} of ${movie.reviewCount} reviews.</p>`
         : '';
+      const cardActions = movie.datasetOnly
+        ? `<p class="field-hint">CSV dataset recommendation · ${escapeHtml(movie.datasetRatingCount)} dataset ratings · ${escapeHtml(movie.language)}</p>`
+        : `<div class="movie-card-actions">${watchlistButton}</div>
+          ${reasons ? `<div class="match-explanation"><h4>Why this was recommended</h4><ul>${reasons}</ul></div>` : ''}
+          <section class="movie-reviews" aria-label="Reviews for ${escapeHtml(movie.title)}">
+            <h4>Community reviews <span class="community-rating">${escapeHtml(ratingSummary)}</span></h4>
+            <div class="review-list">${reviewItems}</div>
+            ${reviewCountLabel}
+            ${reviewForm}
+          </section>`;
       return `
         <article class="movie-card">
           ${poster}
@@ -112,23 +122,15 @@ function renderRecommendations(items) {
           </div>
           <div class="meta">
             <span>${escapeHtml(movie.year)}</span>
-            <span>•</span>
-            <span>${escapeHtml(movie.runtime)} min</span>
+            ${movie.runtime ? `<span>•</span><span>${escapeHtml(movie.runtime)} min</span>` : ''}
             <span>•</span>
             <span>⭐ ${escapeHtml(movie.rating)}</span>
-            <span>•</span>
-            <span>${escapeHtml(movie.director)}</span>
+            ${movie.director ? `<span>•</span><span>${escapeHtml(movie.director)}</span>` : ''}
           </div>
           <div class="meta">${genres}</div>
-          <p>${escapeHtml(movie.description)}</p>
-          <div class="movie-card-actions">${watchlistButton}</div>
-          ${reasons ? `<div class="match-explanation"><h4>Why this was recommended</h4><ul>${reasons}</ul></div>` : ''}
-          <section class="movie-reviews" aria-label="Reviews for ${escapeHtml(movie.title)}">
-            <h4>Community reviews <span class="community-rating">${escapeHtml(ratingSummary)}</span></h4>
-            <div class="review-list">${reviewItems}</div>
-            ${reviewCountLabel}
-            ${reviewForm}
-          </section>
+          ${movie.datasetOnly ? '' : `<p>${escapeHtml(movie.description)}</p>`}
+          ${cardActions}
+          ${movie.datasetOnly && reasons ? `<div class="match-explanation"><h4>Why this was recommended</h4><ul>${reasons}</ul></div>` : ''}
         </article>
       `;
     })
@@ -155,7 +157,6 @@ async function loadUserSession() {
     userWelcome.textContent = `Hi, ${result.user.name}`;
     const preferences = result.user.preferences;
     setSelectedValues(genreSelect, preferences.favoriteGenres);
-    setSelectedValues(moodSelect, preferences.favoriteMoods);
     minimumRatingInput.value = preferences.minimumRating;
   }
 }
@@ -167,7 +168,7 @@ userLogoutButton.addEventListener('click', async () => {
     if (!response.ok) throw new Error('Unable to sign out.');
     await loadUserSession();
     setSelectedValues(genreSelect, []);
-    setSelectedValues(moodSelect, []);
+    setSelectedValues(languageSelect, []);
     minimumRatingInput.value = '7.5';
     signedInUser = null;
     await form.requestSubmit();
@@ -240,9 +241,8 @@ form.addEventListener('submit', async (event) => {
 
   const payload = {
     favoriteGenres: getSelectedValues(genreSelect),
-    favoriteMoods: getSelectedValues(moodSelect),
+    languages: getSelectedValues(languageSelect),
     minimumRating: Number(minimumRatingInput.value) || 0,
-    maxRuntime: Number(maxRuntimeInput.value) || 180,
     includeLatest: includeLatestInput.checked ? 1 : 0
   };
 
