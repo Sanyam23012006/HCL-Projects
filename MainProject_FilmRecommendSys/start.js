@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const { promisify } = require('util');
 
 function loadLocalEnvironment() {
@@ -40,6 +41,7 @@ loadLocalEnvironment();
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const RECOMMENDER_FILE = path.join(__dirname, 'recommend.py');
 const DATA_DIR = path.join(__dirname, 'data');
 const MOVIES_FILE = path.join(DATA_DIR, 'movies.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -856,58 +858,67 @@ function validateMovie(payload) {
   };
 }
 
-function recommendMovies(preferences = {}) {
-  const favoriteGenres = Array.isArray(preferences.favoriteGenres)
-    ? preferences.favoriteGenres.map((genre) => normalizeString(genre, 40)).filter(Boolean)
-    : [normalizeString(preferences.favoriteGenre, 40)].filter(Boolean);
-  const favoriteMoods = Array.isArray(preferences.favoriteMoods)
-    ? preferences.favoriteMoods.map((mood) => normalizeString(mood, 50)).filter(Boolean)
-    : [normalizeString(preferences.mood, 50)].filter(Boolean);
-  const minimumRating = Number(preferences.minimumRating) || 0;
-  const includeLatest = Number(preferences.includeLatest) || 0;
-  const maxRuntime = Number(preferences.maxRuntime) || 180;
+function getPythonExecutable() {
+  return process.env.PYTHON_EXECUTABLE || (process.platform === 'win32' ? 'python' : 'python3');
+}
 
-  return [...movies]
-    .map((movie) => {
-      const matchedGenres = favoriteGenres.filter((genre) => movie.genres.includes(genre));
-      const matchedMood = favoriteMoods.find((mood) => movie.mood.toLowerCase() === mood.toLowerCase());
-      const genreMatch = matchedGenres.length > 0 ? 5 : 0;
-      const moodMatch = matchedMood ? 4 : 0;
-      const ratingBoost = movie.rating >= minimumRating ? 3 : 0;
-      const recencyBoost = movie.year >= 2015 + includeLatest ? 2 : 0;
-      const runtimeFit = movie.runtime <= maxRuntime ? 2 : 0;
-      let score = genreMatch + moodMatch + ratingBoost + recencyBoost + runtimeFit;
-      const reasons = [];
+function getMlRecommendations(payload) {
+  return new Promise((resolve, reject) => {
+    const python = spawn(getPythonExecutable(), [RECOMMENDER_FILE], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let outputTooLarge = false;
 
-      if (matchedGenres.length) {
-        reasons.push(`Matches your genre: ${matchedGenres.join(', ')} (+5)`);
-      } else if (favoriteGenres.length) {
-        score -= 1;
-        reasons.push('No match for your selected genres (-1)');
+    python.stdout.setEncoding('utf8');
+    python.stderr.setEncoding('utf8');
+    python.stdout.on('data', (chunk) => {
+      if (outputTooLarge) return;
+      if (Buffer.byteLength(stdout) + Buffer.byteLength(chunk) > 1024 * 1024) {
+        outputTooLarge = true;
+        python.kill();
+        return;
       }
-      if (matchedMood) {
-        reasons.push(`Matches your mood: ${matchedMood} (+4)`);
-      } else if (favoriteMoods.length) {
-        score -= 0.5;
-        reasons.push('Different from your selected moods (-0.5)');
+      stdout += chunk;
+    });
+    python.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    python.on('error', (error) => {
+      reject(Object.assign(new Error(`Unable to start the Python recommender: ${error.message}`), { statusCode: 503 }));
+    });
+    python.on('close', (code) => {
+      if (outputTooLarge) {
+        reject(Object.assign(new Error('The Python recommender returned too much data.'), { statusCode: 503 }));
+        return;
       }
-      if (ratingBoost) {
-        reasons.push(`Rating ${movie.rating}/10 meets your ${minimumRating}/10 minimum (+3)`);
+      if (code !== 0) {
+        const detail = stderr.trim();
+        reject(Object.assign(
+          new Error(detail
+            ? `The Python recommender failed: ${detail}`
+            : 'The Python recommender failed. Check that its dependencies are installed.'),
+          { statusCode: 503 }
+        ));
+        return;
       }
-      if (recencyBoost) {
-        reasons.push(`Recent release (${movie.year}; ${2015 + includeLatest} or newer) (+2)`);
+      try {
+        const result = JSON.parse(stdout);
+        if (!Array.isArray(result.recommendations)) {
+          throw new Error('The Python recommender returned an invalid response.');
+        }
+        resolve(result.recommendations);
+      } catch (error) {
+        reject(Object.assign(new Error(`Unable to read the Python recommender response: ${error.message}`), { statusCode: 503 }));
       }
-      if (runtimeFit) {
-        reasons.push(`Fits your runtime limit (${movie.runtime} of ${maxRuntime} min) (+2)`);
-      }
-      if (movie.rating < minimumRating) score -= 2;
-      if (movie.runtime > maxRuntime) score -= 3;
+    });
 
-      return { ...movie, score, reasons };
-    })
-    .filter((movie) => movie.rating >= minimumRating && movie.runtime <= maxRuntime)
-    .sort((a, b) => b.score - a.score || b.rating - a.rating)
-    .slice(0, 5);
+    python.stdin.on('error', (error) => {
+      if (error.code !== 'EPIPE') {
+        console.error('Unable to send input to the Python recommender:', error);
+      }
+    });
+    python.stdin.end(JSON.stringify(payload));
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -1166,13 +1177,35 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const user = getUserFromSession(req);
-      const recommendations = recommendMovies(payload).map((movie) => ({
-        ...movie,
-        ...getMovieReviewData(movie.id, user?.id),
-        inWatchlist: Boolean(user && user.watchlist?.includes(movie.id))
-      }));
+      const mlRecommendations = await getMlRecommendations({
+        movies,
+        preferences: payload,
+        watchlist: user?.watchlist || [],
+        ratings: user
+          ? reviews
+            .filter((review) => review.userId === user.id)
+            .map((review) => ({ movieId: review.movieId, rating: review.rating }))
+          : []
+      });
+      const movieById = new Map(movies.map((movie) => [movie.id, movie]));
+      const recommendations = mlRecommendations
+        .map((recommendation) => {
+          const movie = movieById.get(recommendation.id);
+          if (!movie) return null;
+          return {
+            ...movie,
+            score: recommendation.score,
+            reasons: recommendation.reasons,
+            ...getMovieReviewData(movie.id, user?.id),
+            inWatchlist: Boolean(user && user.watchlist?.includes(movie.id))
+          };
+        })
+        .filter(Boolean);
       sendJson(res, 200, { recommendations });
     } catch (error) {
+      if (error.statusCode === 503) {
+        console.error('Unable to generate ML recommendations:', error);
+      }
       sendJson(res, error.statusCode || 400, { error: error.message || 'Unable to get recommendations.' });
     }
     return;

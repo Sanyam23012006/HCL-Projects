@@ -1,4 +1,6 @@
 /.env
+__pycache__/
+/.venv/
 /data/movies.json
 /data/users.json
 /data/reviews.json

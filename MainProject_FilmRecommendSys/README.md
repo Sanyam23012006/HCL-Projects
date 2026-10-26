@@ -13,6 +13,7 @@ A simple movie recommendation app built with Node.js and vanilla JavaScript.
 - User passwords are stored as salted scrypt hashes, not plain text
 - Users can save favorite genres, moods, and minimum ratings for personalized recommendations
 - Each recommendation explains which preferences and ranking factors contributed to its score
+- Python content-based recommendations use TF-IDF and cosine similarity over movie details
 - Signed-in users can rate movies and write one review per movie; community averages are displayed
 - Search the movie catalog by title, director, description, genre, rating, or release year
 - Signed-in users can save movies to a private persistent watchlist
@@ -37,13 +38,27 @@ ADMIN_PASSWORD=choose-a-private-password
 
 The `.env` file is local and ignored by Git. Do not commit or share it.
 
-3. Start the server:
+3. Create a Python virtual environment and install the ML dependency:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+4. Start the server:
 
 ```bash
 node start.js
 ```
 
-4. Open http://localhost:3000 in your browser. Sign in at http://localhost:3000/login.
+5. Open http://localhost:3000 in your browser. Sign in at http://localhost:3000/login.
+
+The recommendation endpoint runs `recommend.py` using the Python executable named by `PYTHON_EXECUTABLE` (default: `python` on Windows, `python3` elsewhere). Activate the virtual environment before starting Node.js so it can find scikit-learn. If you do not activate it, set `PYTHON_EXECUTABLE` in `.env` to the full path of the environment's Python executable.
+
+## Machine-learning approach
+
+The recommender uses content-based filtering. Scikit-learn's `TfidfVectorizer` converts each movie's genres, mood, director, and description into a numeric feature vector. Cosine similarity compares those vectors with a profile built from selected genres and moods, saved watchlist movies, and positively rated movies. Movies above the user's rating threshold and within the runtime limit are ranked by similarity, with rating and recency as secondary signals. This approach can recommend new movies without requiring a large training dataset.
 
 Visitors can create an account at http://localhost:3000/signup or sign in at http://localhost:3000/user-login. Signed-in users can save favorite genres, moods, and a minimum rating at http://localhost:3000/preferences. Saved preferences pre-fill the home-page filters on the next visit and are used to rank recommendations. User accounts and preferences are saved in `data/users.json`, which is ignored by Git.
 
@@ -56,6 +71,8 @@ If you change `.env` while the server is already running, stop it with Ctrl+C an
 ## Project structure
 
 - `start.js` – HTTP server and recommendation logic
+- `recommend.py` – Python TF-IDF and cosine-similarity recommendation engine
+- `requirements.txt` – Python ML dependencies
 - `public/index.html` – page structure
 - `public/styles.css` – styling
 - `public/app.js` – client-side interactions

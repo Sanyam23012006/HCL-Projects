@@ -32,11 +32,11 @@
           <form id="preference-form">
             <label for="favoriteGenre">Genres</label>
             <select id="favoriteGenre" name="favoriteGenres" multiple size="5" aria-describedby="genre-help"></select>
-            <span id="genre-help" class="field-hint">Choose any genres you want to explore. Leave blank for all.</span>
+            <span id="genre-help" class="field-hint">Movies match any selected genre. Leave blank for all genres.</span>
 
             <label for="mood">Moods</label>
             <select id="mood" name="favoriteMoods" multiple size="4" aria-describedby="mood-help"></select>
-            <span id="mood-help" class="field-hint">Choose multiple moods, or leave blank for all.</span>
+            <span id="mood-help" class="field-hint">Movies match any selected mood. If you select genres too, movies must match both. Leave blank for all moods.</span>
 
             <label for="minimumRating">Minimum rating</label>
             <input id="minimumRating" name="minimumRating" type="number" min="0" max="10" step="0.1" value="7.5" />
