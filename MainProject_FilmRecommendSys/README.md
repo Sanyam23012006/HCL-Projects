@@ -6,17 +6,15 @@ A simple movie recommendation app built with Node.js and vanilla JavaScript.
 
 - CSV-backed collaborative recommendations filtered by genre, language, and minimum rating
 - Recent-film preference toggle
-- Admins can add, edit, and delete movies
-- Movie changes are saved in the local JSON catalog
+- Admins can inspect the CSV movie dataset in read-only mode
 - Visitors can create accounts and sign in with an email and password
 - User passwords are stored as salted scrypt hashes, not plain text
 - Users can save favorite genres, moods, and minimum ratings in their account preferences
 - Each recommendation explains the collaborative and popularity signals behind its score
 - Synthetic dataset profiles provide overlapping preferences for demonstrating collaborative filtering
 - Signed-in users can rate movies and write one review per movie; community averages are displayed
-- Search the movie catalog by title, director, description, genre, rating, or release year
+- Search the CSV movie dataset by title, genre, rating, or release year
 - Signed-in users can save movies to a private persistent watchlist
-- Admins can add optional poster image URLs to movies
 - Clean browser UI with no external dependencies
 
 ## Run locally
@@ -67,13 +65,13 @@ The live recommendation endpoint runs `recommend_csv.py` using the Python execut
 
 The active recommender reads user/movie/rating rows directly from `data/collaborative_dataset.csv`. It compares users' sets of liked movies (ratings of 3.5/5 or higher) using Jaccard similarity, then ranks unseen films that similar users liked. Average rating and rating count provide a fallback popularity score for cold-start cases. Genre, language, minimum-rating, and recent-release filters are applied to the CSV fields.
 
-For this demo, each signed-in app account is consistently mapped to one synthetic CSV profile. App account IDs and app review records are not inserted into the CSV ratings model. The displayed dataset titles are not app-catalog movies, so the homepage recommendations do not offer app watchlist/review actions; the catalog's existing review and watchlist features remain available on Browse and Watchlist. The old TF-IDF implementation remains in `recommend.py` but is not called by the live recommendation endpoint.
+For this demo, each signed-in app account is consistently mapped to one synthetic CSV profile. App account IDs and app review records are not inserted into the CSV ratings model. The displayed dataset titles are not app-catalog movies, so the homepage recommendations do not offer app watchlist/review actions. The Browse page and admin movie list both read distinct titles and aggregated ratings from the CSV; the admin view is read-only. The Watchlist page and its review features continue to use the separate app JSON catalog. The old TF-IDF implementation remains in `recommend.py` but is not called by the live recommendation endpoint.
 
 Visitors can create an account at http://localhost:3000/signup or sign in at http://localhost:3000/user-login. Signed-in users can save preferences at http://localhost:3000/preferences. Genre and minimum-rating preferences pre-fill the matching homepage filters. Mood preferences remain stored with the account but are not used by the CSV recommender because mood is not a dataset column. User accounts and preferences are saved in `data/users.json`, which is ignored by Git.
 
 Signed-in users can rate catalog movies from 1 to 10 and post one written review per movie. They can edit their own review; catalog cards show the community average and latest reviews. Reviews are saved in `data/reviews.json`, which is ignored by Git.
 
-Browse the full catalog at http://localhost:3000/browse. Signed-in users can add movies to their private watchlist and review it at http://localhost:3000/watchlist. Admins can optionally add an HTTP or HTTPS poster image URL when creating or editing a movie.
+Browse CSV movie titles at http://localhost:3000/browse. The admin page at http://localhost:3000/admin also displays these CSV records read-only. The JSON movie catalog, accounts, and reviews are preserved; the separate Watchlist page continues to display the app's existing JSON movie records.
 
 If you change `.env` while the server is already running, stop it with Ctrl+C and run `node start.js` again to reload the credentials.
 
@@ -88,7 +86,7 @@ If you change `.env` while the server is already running, stop it with Ctrl+C an
 - `public/styles.css` – styling
 - `public/app.js` – client-side interactions
 - `public/login.html` and `public/login.js` – admin sign-in
-- `public/admin.html` and `public/admin.js` – protected movie management
+- `public/admin.html` and `public/admin.js` – protected, read-only CSV movie listing
 - `public/signup.html`, `public/user-login.html`, and `public/user-auth.js` – user registration and sign-in
 - `public/preferences.html` and `public/preferences.js` – saved recommendation preferences
 - `data/reviews.json` – persistent movie ratings and reviews
@@ -98,4 +96,4 @@ If you change `.env` while the server is already running, stop it with Ctrl+C an
 
 ## Notes
 
-Admin-added movies persist in `data/movies.json`. User accounts persist in `data/users.json`. Admin and user sessions use separate HTTP-only cookies and expire after eight hours.
+Existing JSON files remain intact but do not supply the Browse or Admin movie lists. User accounts persist in `data/users.json`. Admin and user sessions use separate HTTP-only cookies and expire after eight hours.

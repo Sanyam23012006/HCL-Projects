@@ -23,6 +23,18 @@ function showLibraryMessage(message, type = '') {
   libraryMessage.className = `form-message${type ? ` ${type}` : ''}`;
 }
 
+async function readJsonResponse(response) {
+  const body = await response.text();
+  try {
+    return JSON.parse(body);
+  } catch {
+    if (response.status === 404) {
+      throw new Error('The CSV catalog route is unavailable. Restart the server from MainProject_FilmRecommendSys with `node start.js`, then reload this page.');
+    }
+    throw new Error(`The server returned an invalid response (HTTP ${response.status}).`);
+  }
+}
+
 async function loadUserSession() {
   const response = await fetch('/api/user/session');
   if (!response.ok) throw new Error('Unable to check your sign-in status.');
@@ -60,6 +72,28 @@ function renderMovies() {
   }
 
   libraryMovies.innerHTML = movies.map((movie) => {
+    if (movie.datasetOnly) {
+      const genres = movie.genres.map((genre) => `<span class="genre-chip">${escapeHtml(genre)}</span>`).join('');
+      return `
+        <article class="catalog-card">
+          <div class="poster-placeholder" aria-label="No poster available">No poster</div>
+          <div class="catalog-card-content">
+            <div class="movie-top-row">
+              <h3 class="movie-title">${escapeHtml(movie.title)}</h3>
+              <span class="catalog-rating">★ ${escapeHtml(movie.rating)}/5</span>
+            </div>
+            <div class="meta">
+              <span>${escapeHtml(movie.year)}</span>
+              <span>·</span>
+              <span>${escapeHtml(movie.language)}</span>
+            </div>
+            <div class="meta">${genres}</div>
+            <p class="community-rating">${escapeHtml(movie.datasetRatingCount)} CSV dataset ratings</p>
+          </div>
+        </article>
+      `;
+    }
+
     const poster = movie.posterUrl
       ? `<img class="movie-poster" src="${escapeHtml(movie.posterUrl)}" alt="Poster for ${escapeHtml(movie.title)}" loading="lazy" />`
       : '<div class="poster-placeholder" aria-label="No poster available">No poster</div>';
@@ -99,9 +133,9 @@ function renderMovies() {
 async function loadMovies() {
   showLibraryMessage('');
   const query = filterForm ? new URLSearchParams(new FormData(filterForm)) : new URLSearchParams();
-  const endpoint = isWatchlistPage ? '/api/user/watchlist' : `/api/catalog?${query.toString()}`;
+  const endpoint = isWatchlistPage ? '/api/user/watchlist' : `/api/dataset-movies?${query.toString()}`;
   const response = await fetch(endpoint);
-  const result = await response.json();
+  const result = await readJsonResponse(response);
   if (!response.ok) {
     if (response.status === 401 && isWatchlistPage) {
       libraryMovies.innerHTML = '<div class="empty-state">Sign in to view your personal watchlist. <a href="/user-login">Go to sign in</a></div>';

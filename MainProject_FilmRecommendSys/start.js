@@ -988,6 +988,28 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
+  if (req.method === 'GET' && url.pathname === '/api/dataset-movies') {
+    try {
+      const result = await runCsvRecommender({
+        action: 'catalog',
+        filters: {
+          q: url.searchParams.get('q') || '',
+          genre: url.searchParams.get('genre') || '',
+          minimumRating: url.searchParams.get('minimumRating') || '',
+          yearFrom: url.searchParams.get('yearFrom') || '',
+          yearTo: url.searchParams.get('yearTo') || ''
+        }
+      });
+      if (!Array.isArray(result.movies) || !Array.isArray(result.genres)) {
+        throw Object.assign(new Error('The CSV recommender returned an invalid movie catalog.'), { statusCode: 503 });
+      }
+      sendJson(res, 200, { movies: result.movies, genres: result.genres });
+    } catch (error) {
+      console.error('Unable to load CSV movie catalog:', error);
+      sendJson(res, error.statusCode || 400, { error: error.message || 'Unable to load the CSV movie catalog.' });
+    }
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/api/catalog') {
     const user = getUserFromSession(req);
     const result = searchCatalog(url, user?.id);

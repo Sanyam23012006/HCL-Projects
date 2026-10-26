@@ -78,6 +78,63 @@ def get_options(dataset_file=DATASET_FILE):
     }
 
 
+def get_catalog(payload, dataset_file=DATASET_FILE):
+    ratings_by_user, movies = load_dataset(dataset_file)
+    filters = payload.get("filters")
+    if not isinstance(filters, dict):
+        filters = {}
+    query = str(filters.get("q", "")).strip().casefold()
+    genre = str(filters.get("genre", "")).strip().casefold()
+
+    def number_filter(name):
+        value = filters.get(name)
+        if value in (None, ""):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{name} must be a number.") from error
+
+    minimum_rating = number_filter("minimumRating")
+    year_from = number_filter("yearFrom")
+    year_to = number_filter("yearTo")
+    if year_from is not None and year_to is not None and year_from > year_to:
+        raise ValueError("The starting year must not be later than the ending year.")
+
+    catalog = []
+    for title, movie in movies.items():
+        if query and query not in title.casefold():
+            continue
+        if genre and movie["genre"].casefold() != genre:
+            continue
+        if year_from is not None and movie["release_year"] < year_from:
+            continue
+        if year_to is not None and movie["release_year"] > year_to:
+            continue
+
+        user_ratings = [
+            user_ratings[title]
+            for user_ratings in ratings_by_user.values()
+            if title in user_ratings
+        ]
+        average_rating = sum(user_ratings) / len(user_ratings)
+        if minimum_rating is not None and average_rating < minimum_rating:
+            continue
+
+        catalog.append({
+            "id": "dataset-" + hashlib.sha256(title.encode("utf-8")).hexdigest()[:16],
+            "title": title,
+            "genres": [movie["genre"]],
+            "language": movie["language"],
+            "year": movie["release_year"],
+            "rating": round(average_rating, 2),
+            "datasetRatingCount": len(user_ratings),
+            "datasetOnly": True,
+        })
+    catalog.sort(key=lambda item: item["title"].casefold())
+    return {"movies": catalog, "genres": get_options(dataset_file)["genres"]}
+
+
 def recommend(payload, dataset_file=DATASET_FILE):
     ratings_by_user, movies = load_dataset(dataset_file)
     try:
@@ -195,6 +252,8 @@ if __name__ == "__main__":
             raise ValueError("The recommender input must be a JSON object.")
         if request.get("action") == "options":
             response = get_options()
+        elif request.get("action") == "catalog":
+            response = get_catalog(request)
         else:
             response = recommend(request)
         json.dump(response, sys.stdout)

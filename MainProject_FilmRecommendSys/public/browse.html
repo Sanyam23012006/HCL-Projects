@@ -10,7 +10,7 @@
     <div class="page-shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">Explore the library</p>
+          <p class="eyebrow">Explore the CSV dataset</p>
           <h1>Browse movies</h1>
         </div>
         <nav class="hero-nav" aria-label="Main navigation">
@@ -28,8 +28,8 @@
           <h2>Find a film</h2>
           <form id="catalog-filter" class="catalog-filter">
             <div class="field">
-              <label for="catalog-query">Search title, director, or description</label>
-              <input id="catalog-query" name="q" type="search" maxlength="120" placeholder="Try a movie or director" />
+              <label for="catalog-query">Search title</label>
+              <input id="catalog-query" name="q" type="search" maxlength="120" placeholder="Try a movie title" />
             </div>
             <div class="catalog-filter-grid">
               <div class="field">
@@ -37,8 +37,8 @@
                 <select id="catalog-genre" name="genre"></select>
               </div>
               <div class="field">
-                <label for="catalog-rating">Minimum movie rating</label>
-                <input id="catalog-rating" name="minimumRating" type="number" min="0" max="10" step="0.1" />
+                <label for="catalog-rating">Minimum dataset rating (out of 5)</label>
+                <input id="catalog-rating" name="minimumRating" type="number" min="0" max="5" step="0.1" />
               </div>
               <div class="field">
                 <label for="catalog-year-from">Release year from</label>
@@ -58,9 +58,10 @@
 
         <section class="panel catalog-results">
           <div class="results-header">
-            <h2>Movie catalog</h2>
+            <h2>CSV movie dataset</h2>
             <span id="catalog-count" class="status-badge">Loading...</span>
           </div>
+          <p class="page-intro">Showing distinct titles and rating summaries from the CSV. These records are separate from app accounts, reviews, and watchlists.</p>
           <div id="library-message" class="form-message" role="status" aria-live="polite"></div>
           <div id="library-movies" class="catalog-grid"></div>
         </section>

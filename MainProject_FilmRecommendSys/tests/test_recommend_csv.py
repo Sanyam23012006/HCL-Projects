@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from recommend_csv import CSV_COLUMNS, get_options, recommend
+from recommend_csv import CSV_COLUMNS, get_catalog, get_options, recommend
 
 
 class CsvRecommendationTests(unittest.TestCase):
@@ -64,6 +64,25 @@ class CsvRecommendationTests(unittest.TestCase):
                 "languages": ["Hindi", "Tamil", "Telugu"],
             },
         )
+
+    def test_catalog_contains_csv_movies_and_applies_filters(self):
+        result = get_catalog({
+            "filters": {
+                "q": "neighbor",
+                "genre": "action",
+                "minimumRating": "4.5",
+                "yearFrom": "2020",
+                "yearTo": "2023",
+            },
+        }, self.dataset_file)
+
+        self.assertEqual([movie["title"] for movie in result["movies"]], ["Neighbor Pick"])
+        self.assertEqual(result["movies"][0]["language"], "Hindi")
+        self.assertEqual(result["genres"], ["Action", "Comedy", "Drama", "Romance"])
+
+    def test_catalog_rejects_invalid_year_range(self):
+        with self.assertRaisesRegex(ValueError, "starting year"):
+            get_catalog({"filters": {"yearFrom": "2023", "yearTo": "2020"}}, self.dataset_file)
 
 
 if __name__ == "__main__":

@@ -20,59 +20,11 @@
       </header>
 
       <main class="layout">
-        <section class="panel form-panel">
-          <h2 id="movie-form-heading">Add a movie</h2>
-          <p class="page-intro">New entries are saved locally and included in recommendations.</p>
-          <form id="movie-form">
-            <div class="form-grid">
-              <div class="field field-full">
-                <label for="title">Movie title</label>
-                <input id="title" name="title" maxlength="120" required />
-              </div>
-              <div class="field field-full">
-                <label for="genres">Genres</label>
-                <input id="genres" name="genres" placeholder="Drama, Mystery" required />
-              </div>
-              <div class="field">
-                <label for="mood">Mood</label>
-                <input id="mood" name="mood" maxlength="50" placeholder="Thoughtful" required />
-              </div>
-              <div class="field">
-                <label for="year">Release year</label>
-                <input id="year" name="year" type="number" min="1888" max="2100" required />
-              </div>
-              <div class="field">
-                <label for="rating">Rating (0-10)</label>
-                <input id="rating" name="rating" type="number" min="0" max="10" step="0.1" required />
-              </div>
-              <div class="field">
-                <label for="runtime">Runtime (minutes)</label>
-                <input id="runtime" name="runtime" type="number" min="1" max="600" required />
-              </div>
-              <div class="field field-full">
-                <label for="director">Director</label>
-                <input id="director" name="director" maxlength="120" required />
-              </div>
-              <div class="field field-full">
-                <label for="posterUrl">Poster image URL (optional)</label>
-                <input id="posterUrl" name="posterUrl" type="url" maxlength="2048" placeholder="https://example.com/poster.jpg" />
-              </div>
-              <div class="field field-full">
-                <label for="description">Description</label>
-                <textarea id="description" name="description" maxlength="1000" rows="4" required></textarea>
-              </div>
-            </div>
-            <p id="movie-message" class="form-message" role="status" aria-live="polite"></p>
-            <div class="form-actions">
-              <button id="movie-submit-button" type="submit">Save movie</button>
-              <button id="cancel-edit-button" class="button-link" type="button" hidden>Cancel edit</button>
-            </div>
-          </form>
-        </section>
-
         <section class="panel results-panel">
-          <h2>Current library</h2>
+          <h2>CSV movie dataset</h2>
+          <p class="page-intro">This dataset is currently read-only. Its 100 distinct titles and rating summaries are loaded from the CSV used by recommendations. Movie details and per-user ratings are not changed here.</p>
           <p id="movie-count" class="page-intro"></p>
+          <p id="movie-message" class="form-message" role="status" aria-live="polite"></p>
           <div id="movie-list" class="movie-list" aria-live="polite"></div>
         </section>
       </main>
